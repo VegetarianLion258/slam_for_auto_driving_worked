@@ -19,23 +19,6 @@
 #include "thirdparty/sophus/sophus/so3.hpp"
 #include "ch4/imu_preintegration.h"
 
-template <typename T>
-void YawPitchRollToRotationMatrix(const T yaw, const T pitch, const T roll, T R[9]) {
-    T y = yaw / T(180.0) * T(M_PI);
-    T p = pitch / T(180.0) * T(M_PI);
-    T r = roll / T(180.0) * T(M_PI);
-
-    R[0] = cos(y) * cos(p);
-    R[1] = -sin(y) * cos(r) + cos(y) * sin(p) * sin(r);
-    R[2] = sin(y) * sin(r) + cos(y) * sin(p) * cos(r);
-    R[3] = sin(y) * cos(p);
-    R[4] = cos(y) * cos(r) + sin(y) * sin(p) * sin(r);
-    R[5] = -cos(y) * sin(r) + sin(y) * sin(p) * cos(r);
-    R[6] = -sin(p);
-    R[7] = cos(p) * sin(r);
-    R[8] = cos(p) * cos(r);
-};
-
 namespace sad
 {
 
@@ -116,7 +99,7 @@ namespace ceres_optimization
       return true;
     }
   };
-  ceres::CostFunction* CreateBiasConstFunction() {
+  ceres::CostFunction* CreateBiasCostFunction() {
     return new ceres::AutoDiffCostFunction<BiasCostFunctionCore, 6, 15, 15>(
       new BiasCostFunctionCore()
     );
@@ -172,6 +155,26 @@ namespace ceres_optimization
   static ceres::CostFunction* CreateGnssCostFunction(const Sophus::SE3d gnss_states){
     return new ceres::AutoDiffCostFunction<GnssCostFunctionCore, 6, 15> (
       new GnssCostFunctionCore(gnss_states)
+    );
+  }
+
+  class OdomCostFunctionCore {
+    public:
+    OdomCostFunctionCore(const Eigen::Vector3d odom_speed_states) : odom_speed_states_(odom_speed_states) {}
+    template <typename T>
+    bool operator() (const T* const j, T* residual ) const {
+      Eigen::Matrix<T, 3, 1> vj(j[6], j[7], j[8]);
+      residual[0] = T(vj[0] - odom_speed_states_[0]);
+      residual[1] = T(vj[1] - odom_speed_states_[1]);
+      residual[2] = T(vj[2] - odom_speed_states_[2]);
+      return true;
+    }
+    private:
+    const Eigen::Vector3d odom_speed_states_;
+  };
+  static ceres::CostFunction* CreatOdomCostFunction(const Eigen::Vector3d odom_speed_states) {
+    return new ceres::AutoDiffCostFunction<OdomCostFunctionCore, 3, 15> (
+      new OdomCostFunctionCore(odom_speed_states)
     );
   }
 

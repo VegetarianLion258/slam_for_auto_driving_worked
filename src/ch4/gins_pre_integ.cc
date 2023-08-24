@@ -265,7 +265,7 @@ void GinsPreInteg::Optimize() {
         problem
             .AddResidualBlock(ceres_optimization::CreatePreintegrationCostFunction(pre_integ_, options_.gravity_), nullptr, last_state, current_state);
         // 两个零偏
-        problem.AddResidualBlock(ceres_optimization::CreateBiasConstFunction(), nullptr, last_state, current_state);
+        problem.AddResidualBlock(ceres_optimization::CreateBiasCostFunction(), nullptr, last_state, current_state);
 
         //GNSS
         problem.AddResidualBlock(ceres_optimization::CreateGnssCostFunction(last_gnss_.utm_pose_), nullptr, last_state);
@@ -274,6 +274,26 @@ void GinsPreInteg::Optimize() {
         //先验
         problem.AddResidualBlock(ceres_optimization::CreatePriorCostFunction(last_frame_), nullptr, last_state);
         //ODOM
+        Vec3d vel_world = Vec3d::Zero();
+        Vec3d vel_odom = Vec3d::Zero();
+        if (last_odom_set_) {
+            // velocity obs
+            double velo_l = options_.wheel_radius_ * last_odom_.left_pulse_ /
+                            options_.circle_pulse_ * 2 * M_PI /
+                            options_.odom_span_;
+            double velo_r = options_.wheel_radius_ * last_odom_.right_pulse_ /
+                            options_.circle_pulse_ * 2 * M_PI /
+                            options_.odom_span_;
+            double average_vel = 0.5 * (velo_l + velo_r);
+            vel_odom = Vec3d(average_vel, 0.0, 0.0);
+            vel_world = this_frame_->R_ * vel_odom;
+
+            problem.AddResidualBlock(ceres_optimization::CreatOdomCostFunction(vel_world), nullptr, current_state);
+
+            // 重置odom数据到达标志位，等待最新的odom数据
+            last_odom_set_ = false;
+        }
+
 
         ceres::Solver::Options options;
         options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
